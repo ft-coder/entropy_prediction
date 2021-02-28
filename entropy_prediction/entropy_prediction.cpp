@@ -93,6 +93,15 @@ int main(int argc, char* argv[]) {
 		normalizedIntervalValues[i] = intervalValues[i] / sumOfIntervalValues;
 	}
 
+	
+	/*cout.setf(ios::fixed);
+	cout.precision(4);
+
+	for (int i = 0; i < 999; i++) {
+		cout << intervals[i] << endl;
+	}
+	return 0;*/
+
 	/* Инициализация поля пробы и поля нормализованных значений пробы */
 	double* probe = new double[999];
 	double* normalizedProbe = new double[999];
@@ -108,11 +117,17 @@ int main(int argc, char* argv[]) {
 	/* Инициализация генератора случайных чисел */
 	srand(static_cast<unsigned int>(time(0)));
 
-	int steps = 10000; // Количество итераций
+	int steps = 2000; // Количество итераций
 	int step, nextStep;
 
 	double lastTrendValue = cursValues.back(); // Нужно для восстановления значения тренда из производной
 	double newTrendValue;
+
+	/* Инициализация массива, в котором хранится распределение на текущем шаге*/
+	/*double* field = new double[999];
+	for (int i = 0; i < 999; i++)
+		field[i] = intervalValues[i];*/
+
 
 	for (int i = 1; i < steps; i++) {
 		score = 1e10;
@@ -124,15 +139,13 @@ int main(int argc, char* argv[]) {
 			step = stepOrder[j];
 
 			/* Заполнение пробного поля*/
-			probe = intervalValues;
 			for (int k = 0; k < 999; k++)
 				probe[k] = intervalValues[k];
 			
-			/* Прибавляем единицу к значению распределения на текущем шаге */
+			/* Прибавляем единицу к значению распределения на текущем пробном шаге */
 			probe[step]++;
-			
 
-			/* Нормализуем пробное поле и подсчитываем суммарный недобор вероятности*/
+			/* Нормализуем пробное поле и подсчитываем суммарный недобор вероятности */
 			probeSum = 0; // сумма точек
 			for (int k = 0; k < 999; k++) {
 				probeSum += probe[k];
@@ -147,7 +160,7 @@ int main(int argc, char* argv[]) {
 				}
 			}
 			
-			/* Сравниваем найденный недобор с предыдущим значением и запоминаем его, если он меньше*/
+			/* Сравниваем найденный недобор с предыдущим значением и запоминаем его, если он меньше */
 			if (probeScore < score) {
 				score = probeScore;
 				nextSum = probeSum;
@@ -157,6 +170,10 @@ int main(int argc, char* argv[]) {
 
 		step = nextStep;
 		
+		/* Прибавляем единицу к элементу массива распределения и к сумме точек распределения */
+		intervalValues[step]++;
+		sumOfIntervalValues++;
+		
 		/* 
 		   Делаем шаг: определяем границы, в которых лежит прогнозируемое число и генерируем его.
 		   Далее берём интеграл на основании предыдущего значения тренда и найденного значения производной
@@ -165,6 +182,8 @@ int main(int argc, char* argv[]) {
 		lastTrendValue = newTrendValue;
 
 		ofstream outputFile;
+		outputFile.setf(ios::fixed);
+		outputFile.precision(4);
 		outputFile.open("output.txt", ios::app);
 		outputFile << newTrendValue << endl;
 		outputFile.close();
