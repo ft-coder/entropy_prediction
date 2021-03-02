@@ -5,6 +5,8 @@
 #include <vector>
 #include <cstdlib>
 #include <ctime>
+#include "mpi.h"
+
 
 using namespace std;
 
@@ -26,10 +28,18 @@ double integral(double lastTrendValue, double derivative) {
 	return lastTrendValue + derivative;
 }
 
-int main(int argc, char* argv[]) {
+int main(int* argc, char** argv) {
+	int numProc, rank;
+
+	MPI_Init(argc, &argv);
+
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+	MPI_Comm_size(MPI_COMM_WORLD, &numProc);
+	
+	double startTime = MPI_Wtime();
 	
 	/* Cчитывание файла */
-	ifstream file("C:\\Users\\Evgeniy\\source\\repos\\ft-coder\\entropy_prediction\\entropy_prediction\\data.csv", ios::in);
+	ifstream file("C:\\Users\\Evgeniy\\source\\repos\\ft-coder\\entropy_prediction\\entropy_prediction\\sin.csv", ios::in);
 	vector<double> cursValues; // вектор, в котором хранятся значения тренда
 	
 	if (!file.is_open()) {
@@ -93,14 +103,6 @@ int main(int argc, char* argv[]) {
 		normalizedIntervalValues[i] = intervalValues[i] / sumOfIntervalValues;
 	}
 
-	
-	/*cout.setf(ios::fixed);
-	cout.precision(4);
-
-	for (int i = 0; i < 999; i++) {
-		cout << intervals[i] << endl;
-	}
-	return 0;*/
 
 	/* Инициализация поля пробы и поля нормализованных значений пробы */
 	double* probe = new double[999];
@@ -123,11 +125,8 @@ int main(int argc, char* argv[]) {
 	double lastTrendValue = cursValues.back(); // Нужно для восстановления значения тренда из производной
 	double newTrendValue;
 
-	/* Инициализация массива, в котором хранится распределение на текущем шаге*/
-	/*double* field = new double[999];
-	for (int i = 0; i < 999; i++)
-		field[i] = intervalValues[i];*/
-
+	int intervalValuesChunkSize = 999 / numProc;
+	double* procScores = (double*)malloc(numProc * sizeof(double));
 
 	for (int i = 1; i < steps; i++) {
 		score = 1e10;
@@ -135,10 +134,10 @@ int main(int argc, char* argv[]) {
 		/* Рандомизация порядка проб */
 		randomizeStepsOrder(stepOrder, 999);
 
-		for (int j = 0; j < 999; j++) {
-			step = stepOrder[j];
+		for (int j = 0; j < intervalValuesChunkSize; j++) {
+			step = stepOrder[rank * intervalValuesChunkSize + j];
 
-			/* Заполнение пробного поля*/
+			/* Заполнение пробного поля */
 			for (int k = 0; k < 999; k++)
 				probe[k] = intervalValues[k];
 			
@@ -168,12 +167,31 @@ int main(int argc, char* argv[]) {
 			}
 		}
 
+		/* Ждём пока все потоки закончат анализ проб*/
+		MPI_Barrier(MPI_COMM_WORLD);
+		
+		/*Собираем минимальные недоборы вероятностей в одном массиве с каждого потока*/
+		MPI_Allgather(&score, 1, MPI_DOUBLE, procScores, 1, MPI_DOUBLE, MPI_COMM_WORLD);
+
+		/* Определение потока, на котором произошёл самый маленький недобор вероятностей */
+		int procWithMinimalScore = 0;
+		double procScore = procScores[0];
+
+		for (int z = 0; z < numProc; z++) {
+			if (procScores[z] < procScore) {
+				procScore = procScores[z];
+				procWithMinimalScore = z;
+			}
+		}
+
+		MPI_Bcast(&nextStep, 1, MPI_INT, procWithMinimalScore, MPI_COMM_WORLD);
+
 		step = nextStep;
 		
 		/* Прибавляем единицу к элементу массива распределения и к сумме точек распределения */
 		intervalValues[step]++;
 		sumOfIntervalValues++;
-		
+
 		/* 
 		   Делаем шаг: определяем границы, в которых лежит прогнозируемое число и генерируем его.
 		   Далее берём интеграл на основании предыдущего значения тренда и найденного значения производной
@@ -181,15 +199,20 @@ int main(int argc, char* argv[]) {
 		newTrendValue = integral(lastTrendValue, randomBetween(intervals[step], intervals[step + 1]));
 		lastTrendValue = newTrendValue;
 
-		ofstream outputFile;
-		outputFile.setf(ios::fixed);
-		outputFile.precision(4);
-		outputFile.open("output.txt", ios::app);
-		outputFile << newTrendValue << endl;
-		outputFile.close();
+		if (rank == 0) {
+			ofstream outputFile;
+			outputFile.setf(ios::fixed);
+			outputFile.precision(4);
+			outputFile.open("C:\\Users\\Evgeniy\\source\\repos\\ft-coder\\entropy_prediction\\entropy_prediction\\output.txt", ios::app);
+			outputFile << newTrendValue << endl;
+			outputFile.close();
+		}
 	}
 
-	cout << "Gotovo!";
+	if (rank == 0) {
+		cout << "Gotovo!\n" << "Execution time = " << MPI_Wtime() - startTime << endl;
+	}
 
+	MPI_Finalize();
 	return 0;
 }

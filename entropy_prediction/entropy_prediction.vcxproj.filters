@@ -21,6 +21,9 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="data.csv" />
-    <None Include="..\..\..\..\..\Desktop\kursach\gui.py" />
+    <None Include="sin.csv" />
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="output.txt" />
   </ItemGroup>
 </Project>
